@@ -1,0 +1,11 @@
+# Installig the dependencies
+npm install
+
+# Running the development server
+npm run dev
+
+# Building the project
+npm run build
+
+# Starting the production server
+npm run start
