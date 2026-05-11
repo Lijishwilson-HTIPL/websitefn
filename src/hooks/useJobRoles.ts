@@ -4,12 +4,16 @@ import { useEffect, useState } from "react";
 import { BACKEND_URL } from "@/config";
 
 export interface JobRole {
-  id: number;
+  id: string; // Job Opening name in HRMS (e.g. HR-OPP-2026-00001)
   title: string;
   type: string;
   location: string;
-  description: string;
+  description: string;       // plain text — for excerpts / meta
+  descriptionHtml: string;   // raw HTML from HRMS editor — render with dangerouslySetInnerHTML
   tags: string[];
+  lower_range: number | null;
+  upper_range: number | null;
+  currency: string | null;
 }
 
 export function useJobRoles() {

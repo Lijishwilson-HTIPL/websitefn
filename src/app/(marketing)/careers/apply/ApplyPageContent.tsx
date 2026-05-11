@@ -3,9 +3,63 @@
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Mail, Linkedin, MapPin, Clock } from "lucide-react";
+import { ArrowLeft, Mail, Linkedin, MapPin, Clock, IndianRupee, ChevronDown, ChevronUp } from "lucide-react";
 import JobApplicationForm from "@/components/JobApplicationForm";
 import { useJobRoles } from "@/hooks/useJobRoles";
+
+function JobDescription({ html, plain }: { html: string; plain: string }) {
+  const [expanded, setExpanded] = useState(false);
+
+  if (html) {
+    return (
+      <div>
+        <div
+          className={`prose prose-sm max-w-none text-slate-600 prose-headings:text-slate-800 prose-headings:font-bold prose-li:marker:text-sky-500 prose-strong:text-slate-800 ${
+            !expanded ? "line-clamp-6" : ""
+          }`}
+          dangerouslySetInnerHTML={{ __html: html }}
+        />
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="mt-2 flex items-center gap-1 text-xs font-semibold text-sky-600 hover:underline focus:outline-none"
+        >
+          {expanded ? (
+            <><ChevronUp className="w-3.5 h-3.5" /> Show less</>
+          ) : (
+            <><ChevronDown className="w-3.5 h-3.5" /> Read full description</>
+          )}
+        </button>
+      </div>
+    );
+  }
+
+  const words = plain.split(/\s+/);
+  const truncated = !expanded && words.length > 50;
+  return (
+    <p className="text-sm text-slate-600 leading-relaxed">
+      {truncated ? words.slice(0, 50).join(" ") + "…" : plain}
+      {words.length > 50 && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="ml-1.5 text-sky-600 font-semibold hover:underline focus:outline-none"
+        >
+          {expanded ? "Show less" : "Read more"}
+        </button>
+      )}
+    </p>
+  );
+}
+
+function formatSalary(lower: number | null, upper: number | null, currency: string | null) {
+  if (!lower && !upper) return null;
+  const symbol = !currency || currency === "INR" ? "₹" : `${currency} `;
+  const fmt = (n: number) => n.toLocaleString("en-IN");
+  if (lower && upper) return `${symbol}${fmt(lower)} – ${symbol}${fmt(upper)} per year`;
+  if (lower) return `From ${symbol}${fmt(lower)} per year`;
+  return `Up to ${symbol}${fmt(upper!)} per year`;
+}
 
 const hiringSteps = [
   { step: "1", title: "Application Review", desc: "A senior team member reads every application personally — not a keyword filter." },
@@ -17,11 +71,12 @@ const hiringSteps = [
 export default function ApplyPageContent() {
   const searchParams = useSearchParams();
   const rawRole = searchParams.get("role") ?? "";
-  const defaultRole = rawRole ? decodeURIComponent(rawRole) : "";
+  const defaultRoleId = rawRole ? decodeURIComponent(rawRole) : "";
 
   const { roles } = useJobRoles();
-  const [selectedRole, setSelectedRole] = useState(defaultRole);
-  const details = roles.find((r) => r.title === selectedRole) ?? null;
+  const [selectedRoleId, setSelectedRoleId] = useState(defaultRoleId);
+  const details = roles.find((r) => r.id === selectedRoleId) ?? null;
+  const selectedRole = details?.title ?? "";
 
   return (
     <>
@@ -73,7 +128,7 @@ export default function ApplyPageContent() {
                   Fill in the fields below. Your LinkedIn and resume are required to complete the application.
                 </p>
               </div>
-              <JobApplicationForm defaultRole={defaultRole} onRoleChange={setSelectedRole} />
+              <JobApplicationForm defaultRoleId={defaultRoleId} onRoleChange={setSelectedRoleId} />
             </div>
 
             {/* Sidebar */}
@@ -84,7 +139,15 @@ export default function ApplyPageContent() {
                   <p className="text-sm font-semibold text-sky-600 uppercase tracking-wider mb-3">
                     Job Description
                   </p>
-                  <p className="text-sm text-slate-700 leading-relaxed mb-4">{details.description}</p>
+                  <div className="mb-4">
+                    <JobDescription html={details.descriptionHtml} plain={details.description} />
+                  </div>
+                  {formatSalary(details.lower_range, details.upper_range, details.currency) && (
+                    <div className="flex items-center gap-1.5 text-sm font-semibold text-emerald-700 mb-4">
+                      <IndianRupee className="w-3.5 h-3.5 shrink-0" />
+                      {formatSalary(details.lower_range, details.upper_range, details.currency)}
+                    </div>
+                  )}
                   <div className="flex flex-wrap gap-2">
                     {details.tags.map((tag) => (
                       <span key={tag} className="rounded-full bg-slate-200 px-3 py-1 text-xs font-medium text-slate-600">

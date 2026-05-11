@@ -4,6 +4,9 @@ import { useState, useRef } from "react";
 import { ArrowRight, Loader2, CheckCircle2, Upload } from "lucide-react";
 import { useJobRoles } from "@/hooks/useJobRoles";
 import { submitCareerInquiry } from "@/services/careerInquiry";
+import { submitJobApplicant } from "@/services/jobApplicant";
+
+const SPECULATIVE = "__speculative__";
 
 
 const referralSources = [
@@ -21,7 +24,7 @@ interface FormState {
   lastName: string;
   email: string;
   mobileNumber: string;
-  role: string;
+  roleId: string; // either a Job Opening name or SPECULATIVE
   experience: string;
   linkedIn: string;
   resumeLink: string;
@@ -32,14 +35,13 @@ interface FormState {
 }
 
 export default function JobApplicationForm({
-  defaultRole = "",
+  defaultRoleId = "",
   onRoleChange,
 }: {
-  defaultRole?: string;
-  onRoleChange?: (role: string) => void;
+  defaultRoleId?: string;
+  onRoleChange?: (roleId: string) => void;
 }) {
   const { roles, loading: rolesLoading } = useJobRoles();
-  const roleTitles = ["Speculative / General Application", ...roles.map((r) => r.title)];
   const noOpenings = !rolesLoading && roles.length === 0;
 
   const [form, setForm] = useState<FormState>({
@@ -47,7 +49,7 @@ export default function JobApplicationForm({
     lastName: "",
     email: "",
     mobileNumber: "",
-    role: defaultRole,
+    roleId: defaultRoleId || (noOpenings ? SPECULATIVE : ""),
     experience: "",
     linkedIn: "",
     resumeLink: "",
@@ -59,13 +61,19 @@ export default function JobApplicationForm({
   const [resumeFile, setResumeFile] = useState<File | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [submittedJobId, setSubmittedJobId] = useState<string | null>(null);
+  const [submittedAppId, setSubmittedAppId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const selectedRole = roles.find((r) => r.id === form.roleId) ?? null;
+  const isSpeculative = form.roleId === SPECULATIVE || (!selectedRole && noOpenings);
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
   ) => {
-    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
-    if (e.target.name === "role") onRoleChange?.(e.target.value);
+    const { name, value } = e.target;
+    setForm((prev) => ({ ...prev, [name]: value }));
+    if (name === "roleId") onRoleChange?.(value);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -84,31 +92,54 @@ export default function JobApplicationForm({
     setSubmitting(true);
 
     try {
-      await submitCareerInquiry({
-        first_name: form.firstName,
-        last_name: form.lastName,
-        email: form.email,
-        business_email: form.email,
-        mobile_number: form.mobileNumber,
-        phone_number: form.mobileNumber,
-        role_applied_for: form.role,
-        role_applying_for: form.role,
-        role_title: form.role,
-        organization_name: "Individual Applicant",
-        organization_type: "Other",
-        primary_interest: "Other",
-        challenge_or_initiative: form.message,
-        years_of_experience: form.experience,
-        linkedin_url: form.linkedIn,
-        linkedin_profile_url: form.linkedIn,
-        resume_file: resumeFile,
-        portfolio_link: form.portfolioLink || undefined,
-        portfolio_site: form.portfolioLink || undefined,
-        cover_letter: form.message,
-        tell_us_about_yourself: form.message,
-        how_did_you_hear: form.referral || undefined,
-        other_source: form.referral === "Other" ? form.referralOther || undefined : undefined,
-      });
+      if (selectedRole && !isSpeculative) {
+        // Real Job Opening selected → create Job Applicant in HRMS
+        const result = await submitJobApplicant({
+          applicant_name: `${form.firstName} ${form.lastName}`.trim(),
+          email_id: form.email,
+          phone_number: form.mobileNumber,
+          cover_letter: form.message,
+          job_title: selectedRole.id,
+          resume_file: resumeFile,
+          source: "Website Listing",
+          // Native HRMS fields (updated job_applicant.json — corporaterulers fork)
+          role_applying_for: selectedRole.title,
+          years_of_experience: form.experience || undefined,
+          linkedin_profile_url: form.linkedIn || undefined,
+          portfolio_site: form.portfolioLink || undefined,
+          how_did_you_hear: form.referral || undefined,
+          other_source: form.referral === "Other" ? form.referralOther || undefined : undefined,
+        });
+        setSubmittedAppId(result.name);
+        setSubmittedJobId(result.job_opening_id);
+      } else {
+        // Speculative / no role selected → keep existing Career Inquiry path
+        await submitCareerInquiry({
+          first_name: form.firstName,
+          last_name: form.lastName,
+          email: form.email,
+          business_email: form.email,
+          mobile_number: form.mobileNumber,
+          phone_number: form.mobileNumber,
+          role_applied_for: "Speculative / General Application",
+          role_applying_for: "Speculative / General Application",
+          role_title: "Speculative / General Application",
+          organization_name: "Individual Applicant",
+          organization_type: "Other",
+          primary_interest: "Other",
+          challenge_or_initiative: form.message,
+          years_of_experience: form.experience,
+          linkedin_url: form.linkedIn,
+          linkedin_profile_url: form.linkedIn,
+          resume_file: resumeFile,
+          portfolio_link: form.portfolioLink || undefined,
+          portfolio_site: form.portfolioLink || undefined,
+          cover_letter: form.message,
+          tell_us_about_yourself: form.message,
+          how_did_you_hear: form.referral || undefined,
+          other_source: form.referral === "Other" ? form.referralOther || undefined : undefined,
+        });
+      }
       setSubmitted(true);
     } catch (err) {
       console.error("Submission error:", err);
@@ -126,6 +157,17 @@ export default function JobApplicationForm({
         <p className="text-base text-slate-600 max-w-sm mx-auto">
           Thank you for applying. A member of our team will review your application and respond within two business days.
         </p>
+        {submittedJobId && (
+          <div className="mt-5 inline-flex flex-col items-center gap-1 rounded-xl bg-white border border-sky-200 px-5 py-3">
+            <span className="text-xs uppercase tracking-wider font-semibold text-slate-500">Job ID</span>
+            <span className="text-sm font-mono font-bold text-sky-700">{submittedJobId}</span>
+            {submittedAppId && (
+              <span className="text-xs text-slate-500 mt-1">
+                Application ref: <span className="font-mono">{submittedAppId}</span>
+              </span>
+            )}
+          </div>
+        )}
       </div>
     );
   }
@@ -212,7 +254,7 @@ export default function JobApplicationForm({
           </label>
           {noOpenings ? (
             <>
-              <input type="hidden" name="role" value="Speculative / General Application" />
+              <input type="hidden" name="roleId" value={SPECULATIVE} />
               <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 font-medium leading-snug">
                 No open positions right now. Your application will be filed as a{" "}
                 <span className="font-bold">Speculative Application</span> — we'll reach out when a suitable role opens.
@@ -221,15 +263,16 @@ export default function JobApplicationForm({
           ) : (
             <select
               id="role"
-              name="role"
+              name="roleId"
               required
-              value={form.role}
+              value={form.roleId}
               onChange={handleChange}
               className={inputClass}
             >
               <option value="" disabled>Select a role</option>
-              {roleTitles.map((r) => (
-                <option key={r} value={r}>{r}</option>
+              <option value={SPECULATIVE}>Speculative / General Application</option>
+              {roles.map((r) => (
+                <option key={r.id} value={r.id}>{r.title}</option>
               ))}
             </select>
           )}
