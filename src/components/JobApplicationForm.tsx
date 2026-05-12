@@ -159,7 +159,7 @@ export default function JobApplicationForm({
         </p>
         {submittedJobId && (
           <div className="mt-5 inline-flex flex-col items-center gap-1 rounded-xl bg-white border border-sky-200 px-5 py-3">
-            <span className="text-xs uppercase tracking-wider font-semibold text-slate-500">Job ID</span>
+            <span className="text-xs uppercase tracking-wider font-semibold text-slate-500">Job Application</span>
             <span className="text-sm font-mono font-bold text-sky-700">{submittedJobId}</span>
             {submittedAppId && (
               <span className="text-xs text-slate-500 mt-1">
