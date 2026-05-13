@@ -8,6 +8,16 @@ import { submitJobApplicant } from "@/services/jobApplicant";
 
 const SPECULATIVE = "__speculative__";
 
+const MAX_RESUME_BYTES = 10 * 1024 * 1024;
+const ALLOWED_RESUME_EXT = [".pdf", ".doc", ".docx"];
+const NAME_RE = /^[A-Za-z][A-Za-z\s'-]{0,49}$/;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const PHONE_RE = /^\+?[0-9\s().-]{7,20}$/;
+const LINKEDIN_RE = /^https?:\/\/(www\.)?linkedin\.com\/(in|pub)\/[A-Za-z0-9_-]+\/?$/i;
+const URL_RE = /^https?:\/\/[^\s]+\.[^\s]+$/i;
+
+const countDigits = (s: string) => (s.match(/\d/g) ?? []).length;
+
 
 const referralSources = [
   "LinkedIn",
@@ -63,10 +73,92 @@ export default function JobApplicationForm({
   const [submitting, setSubmitting] = useState(false);
   const [submittedJobId, setSubmittedJobId] = useState<string | null>(null);
   const [submittedAppId, setSubmittedAppId] = useState<string | null>(null);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const selectedRole = roles.find((r) => r.id === form.roleId) ?? null;
   const isSpeculative = form.roleId === SPECULATIVE || (!selectedRole && noOpenings);
+
+  const validateField = (name: string, value: string, file: File | null = resumeFile): string => {
+    const v = value.trim();
+    switch (name) {
+      case "firstName":
+      case "lastName": {
+        if (!v) return "Required.";
+        if (v.length < 2) return "Must be at least 2 characters.";
+        if (!NAME_RE.test(v)) return "Only letters, spaces, hyphens, and apostrophes.";
+        return "";
+      }
+      case "email":
+        if (!v) return "Required.";
+        if (!EMAIL_RE.test(v)) return "Enter a valid email address.";
+        return "";
+      case "mobileNumber": {
+        if (!v) return "Required.";
+        if (!PHONE_RE.test(v)) return "Enter a valid phone number.";
+        const d = countDigits(v);
+        if (d < 7 || d > 15) return "Phone must have 7–15 digits.";
+        return "";
+      }
+      case "roleId":
+        if (!v) return "Please select a role.";
+        if (v !== SPECULATIVE && !roles.find((r) => r.id === v)) return "Invalid role.";
+        return "";
+      case "experience": {
+        if (!v) return "Required.";
+        const n = Number(v);
+        if (!Number.isFinite(n)) return "Must be a number.";
+        if (n < 0 || n > 60) return "Must be between 0 and 60.";
+        if (/\.\d{2,}/.test(v)) return "At most 1 decimal place.";
+        return "";
+      }
+      case "linkedIn":
+        if (!v) return "Required.";
+        if (!LINKEDIN_RE.test(v)) return "Enter a valid LinkedIn profile URL (https://linkedin.com/in/…).";
+        return "";
+      case "portfolioLink":
+        if (!v) return "";
+        if (!URL_RE.test(v)) return "Enter a valid URL starting with http(s)://";
+        return "";
+      case "message":
+        if (!v) return "Required.";
+        if (v.length < 50) return `Please write at least 50 characters (currently ${v.length}).`;
+        if (v.length > 2000) return "Keep it under 2000 characters.";
+        return "";
+      case "referralOther":
+        if (form.referral === "Other") {
+          if (!v) return "Please specify.";
+          if (v.length < 2) return "Too short.";
+        }
+        return "";
+      case "resume": {
+        if (!file) return "Please upload your resume.";
+        if (file.size === 0) return "File is empty.";
+        if (file.size > MAX_RESUME_BYTES) return "File must be 10 MB or smaller.";
+        const lower = file.name.toLowerCase();
+        if (!ALLOWED_RESUME_EXT.some((ext) => lower.endsWith(ext))) return "Must be a PDF, DOC, or DOCX.";
+        return "";
+      }
+      default:
+        return "";
+    }
+  };
+
+  const validateAll = (): Record<string, string> => {
+    const fields = [
+      "firstName", "lastName", "email", "mobileNumber", "roleId",
+      "experience", "linkedIn", "portfolioLink", "message", "referralOther",
+    ] as const;
+    const next: Record<string, string> = {};
+    for (const f of fields) {
+      const err = validateField(f, (form as unknown as Record<string, string>)[f]);
+      if (err) next[f] = err;
+    }
+    const resumeErr = validateField("resume", "", resumeFile);
+    if (resumeErr) next.resume = resumeErr;
+    return next;
+  };
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
@@ -74,22 +166,41 @@ export default function JobApplicationForm({
     const { name, value } = e.target;
     setForm((prev) => ({ ...prev, [name]: value }));
     if (name === "roleId") onRoleChange?.(value);
+    if (touched[name]) {
+      setErrors((prev) => ({ ...prev, [name]: validateField(name, value) }));
+    }
+  };
+
+  const handleBlur = (
+    e: React.FocusEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
+  ) => {
+    const { name, value } = e.target;
+    setTouched((prev) => ({ ...prev, [name]: true }));
+    setErrors((prev) => ({ ...prev, [name]: validateField(name, value) }));
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] ?? null;
     setResumeFile(file);
+    setTouched((prev) => ({ ...prev, resume: true }));
+    setErrors((prev) => ({ ...prev, resume: validateField("resume", "", file) }));
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
-    if (!resumeFile) {
-      alert("Please upload your Resume / CV file.");
+    const allErrors = validateAll();
+    if (Object.keys(allErrors).length > 0) {
+      setErrors(allErrors);
+      setTouched((prev) => ({
+        ...prev,
+        ...Object.fromEntries(Object.keys(allErrors).map((k) => [k, true])),
+      }));
       return;
     }
 
     setSubmitting(true);
+    const resumeFileChecked = resumeFile as File;
 
     try {
       if (selectedRole && !isSpeculative) {
@@ -100,7 +211,7 @@ export default function JobApplicationForm({
           phone_number: form.mobileNumber,
           cover_letter: form.message,
           job_title: selectedRole.id,
-          resume_file: resumeFile,
+          resume_file: resumeFileChecked,
           source: "Website Listing",
           // Native HRMS fields (updated job_applicant.json — corporaterulers fork)
           role_applying_for: selectedRole.title,
@@ -131,7 +242,7 @@ export default function JobApplicationForm({
           years_of_experience: form.experience,
           linkedin_url: form.linkedIn,
           linkedin_profile_url: form.linkedIn,
-          resume_file: resumeFile,
+          resume_file: resumeFileChecked,
           portfolio_link: form.portfolioLink || undefined,
           portfolio_site: form.portfolioLink || undefined,
           cover_letter: form.message,
@@ -172,9 +283,14 @@ export default function JobApplicationForm({
     );
   }
 
-  const inputClass =
-    "w-full rounded-md border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 transition-colors";
+  const baseInputClass =
+    "w-full rounded-md border bg-white px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 transition-colors";
+  const inputClass = `${baseInputClass} border-slate-200 focus:border-sky-500 focus:ring-sky-500`;
+  const errorInputClass = `${baseInputClass} border-red-400 focus:border-red-500 focus:ring-red-500`;
   const labelClass = "block text-xs font-semibold text-slate-700 mb-1.5";
+  const cls = (name: string) => (errors[name] ? errorInputClass : inputClass);
+  const FieldError = ({ name }: { name: string }) =>
+    errors[name] ? <p className="mt-1 text-xs text-red-600">{errors[name]}</p> : null;
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
@@ -191,9 +307,11 @@ export default function JobApplicationForm({
             required
             value={form.firstName}
             onChange={handleChange}
+            onBlur={handleBlur}
             placeholder="Jane"
-            className={inputClass}
+            className={cls("firstName")}
           />
+          <FieldError name="firstName" />
         </div>
         <div>
           <label htmlFor="lastName" className={labelClass}>
@@ -206,9 +324,11 @@ export default function JobApplicationForm({
             required
             value={form.lastName}
             onChange={handleChange}
+            onBlur={handleBlur}
             placeholder="Smith"
-            className={inputClass}
+            className={cls("lastName")}
           />
+          <FieldError name="lastName" />
         </div>
       </div>
 
@@ -225,9 +345,11 @@ export default function JobApplicationForm({
             required
             value={form.email}
             onChange={handleChange}
+            onBlur={handleBlur}
             placeholder="jane.smith@example.com"
-            className={inputClass}
+            className={cls("email")}
           />
+          <FieldError name="email" />
         </div>
         <div>
           <label htmlFor="mobileNumber" className={labelClass}>
@@ -240,9 +362,11 @@ export default function JobApplicationForm({
             required
             value={form.mobileNumber}
             onChange={handleChange}
+            onBlur={handleBlur}
             placeholder="+1 (555) 000-0000"
-            className={inputClass}
+            className={cls("mobileNumber")}
           />
+          <FieldError name="mobileNumber" />
         </div>
       </div>
 
@@ -267,7 +391,8 @@ export default function JobApplicationForm({
               required
               value={form.roleId}
               onChange={handleChange}
-              className={inputClass}
+              onBlur={handleBlur}
+              className={cls("roleId")}
             >
               <option value="" disabled>Select a role</option>
               <option value={SPECULATIVE}>Speculative / General Application</option>
@@ -276,6 +401,7 @@ export default function JobApplicationForm({
               ))}
             </select>
           )}
+          <FieldError name="roleId" />
         </div>
         <div>
           <label htmlFor="experience" className={labelClass}>
@@ -286,13 +412,16 @@ export default function JobApplicationForm({
             name="experience"
             type="number"
             min="0"
+            max="60"
             step="0.1"
             required
             value={form.experience}
             onChange={handleChange}
+            onBlur={handleBlur}
             placeholder="e.g. 1.5"
-            className={inputClass}
+            className={cls("experience")}
           />
+          <FieldError name="experience" />
         </div>
       </div>
 
@@ -308,9 +437,11 @@ export default function JobApplicationForm({
           required
           value={form.linkedIn}
           onChange={handleChange}
+          onBlur={handleBlur}
           placeholder="https://linkedin.com/in/yourprofile"
-          className={inputClass}
+          className={cls("linkedIn")}
         />
+        <FieldError name="linkedIn" />
       </div>
 
       {/* Resume / CV — upload only */}
@@ -320,7 +451,11 @@ export default function JobApplicationForm({
         </label>
         <div
             onClick={() => fileInputRef.current?.click()}
-            className="w-full rounded-md border-2 border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-center cursor-pointer hover:border-sky-400 hover:bg-sky-50 transition-colors"
+            className={`w-full rounded-md border-2 border-dashed bg-slate-50 px-4 py-5 text-center cursor-pointer transition-colors ${
+              errors.resume
+                ? "border-red-400 hover:border-red-500"
+                : "border-slate-200 hover:border-sky-400 hover:bg-sky-50"
+            }`}
           >
             <Upload className="w-5 h-5 text-slate-400 mx-auto mb-1.5" />
             {resumeFile ? (
@@ -339,6 +474,7 @@ export default function JobApplicationForm({
               onChange={handleFileChange}
             />
           </div>
+          <FieldError name="resume" />
       </div>
 
       {/* Portfolio — optional */}
@@ -353,9 +489,11 @@ export default function JobApplicationForm({
           type="url"
           value={form.portfolioLink}
           onChange={handleChange}
+          onBlur={handleBlur}
           placeholder="https://yourportfolio.com"
-          className={inputClass}
+          className={cls("portfolioLink")}
         />
+        <FieldError name="portfolioLink" />
       </div>
 
       {/* Cover letter */}
@@ -368,11 +506,17 @@ export default function JobApplicationForm({
           name="message"
           required
           rows={5}
+          maxLength={2000}
           value={form.message}
           onChange={handleChange}
+          onBlur={handleBlur}
           placeholder="Briefly describe your background, what draws you to this role, and any relevant experience in regulated environments, AI/ML, or life sciences."
-          className={`${inputClass} resize-none`}
+          className={`${cls("message")} resize-none`}
         />
+        <div className="mt-1 flex justify-between">
+          <FieldError name="message" />
+          <span className="text-xs text-slate-400 ml-auto">{form.message.length}/2000</span>
+        </div>
       </div>
 
       {/* Referral */}
@@ -402,11 +546,15 @@ export default function JobApplicationForm({
               onChange={(e) => {
                 if (e.target.value.length <= 250)
                   setForm((prev) => ({ ...prev, referralOther: e.target.value }));
+                if (touched.referralOther)
+                  setErrors((prev) => ({ ...prev, referralOther: validateField("referralOther", e.target.value) }));
               }}
+              onBlur={handleBlur}
               placeholder="Please specify…"
               maxLength={250}
-              className={inputClass}
+              className={cls("referralOther")}
             />
+            <FieldError name="referralOther" />
             <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 pointer-events-none">
               {form.referralOther.length}/250
             </span>
