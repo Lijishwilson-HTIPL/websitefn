@@ -5,6 +5,8 @@ import { ArrowRight, Loader2, CheckCircle2, Upload } from "lucide-react";
 import { useJobRoles } from "@/hooks/useJobRoles";
 import { submitCareerInquiry } from "@/services/careerInquiry";
 import { submitJobApplicant } from "@/services/jobApplicant";
+import PhoneInput from "react-phone-input-2";
+import "react-phone-input-2/lib/style.css";
 
 const SPECULATIVE = "__speculative__";
 
@@ -13,7 +15,7 @@ const ALLOWED_RESUME_EXT = [".pdf", ".doc", ".docx"];
 const NAME_RE = /^[A-Za-z][A-Za-z\s'-]{0,49}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const PHONE_RE = /^\+?[0-9\s().-]{7,20}$/;
-const LINKEDIN_RE = /^https?:\/\/(www\.)?linkedin\.com\/(in|pub)\/[A-Za-z0-9_-]+\/?$/i;
+const LINKEDIN_RE = /^https?:\/\/(www\.)?linkedin\.com\/in\/[A-Za-z0-9._-]+\/?$/i;
 const URL_RE = /^https?:\/\/[^\s]+\.[^\s]+$/i;
 
 const countDigits = (s: string) => (s.match(/\d/g) ?? []).length;
@@ -84,60 +86,63 @@ export default function JobApplicationForm({
     const v = value.trim();
     switch (name) {
       case "firstName":
-      case "lastName": {
-        if (!v) return "Required.";
-        if (v.length < 2) return "Must be at least 2 characters.";
-        if (!NAME_RE.test(v)) return "Only letters, spaces, hyphens, and apostrophes.";
+        if (!v) return "First Name is required.";
+        if (v.length < 2) return "First Name must be at least 2 characters.";
+        if (!NAME_RE.test(v)) return "First Name can only contain letters, spaces, hyphens, and apostrophes.";
         return "";
-      }
+      case "lastName":
+        if (!v) return "Last Name is required.";
+        if (v.length < 2) return "Last Name must be at least 2 characters.";
+        if (!NAME_RE.test(v)) return "Last Name can only contain letters, spaces, hyphens, and apostrophes.";
+        return "";
       case "email":
-        if (!v) return "Required.";
-        if (!EMAIL_RE.test(v)) return "Enter a valid email address.";
+        if (!v) return "Email Address is required.";
+        if (!EMAIL_RE.test(v)) return "Enter a valid Email Address.";
         return "";
       case "mobileNumber": {
-        if (!v) return "Required.";
-        if (!PHONE_RE.test(v)) return "Enter a valid phone number.";
+        if (!v) return "Phone Number is required.";
+        if (!PHONE_RE.test(v)) return "Enter a valid Phone Number.";
         const d = countDigits(v);
-        if (d < 7 || d > 15) return "Phone must have 7–15 digits.";
+        if (d < 7 || d > 15) return "Phone Number must have 7–15 digits.";
         return "";
       }
       case "roleId":
-        if (!v) return "Please select a role.";
-        if (v !== SPECULATIVE && !roles.find((r) => r.id === v)) return "Invalid role.";
+        if (!v) return "Please select a Role.";
+        if (v !== SPECULATIVE && !roles.find((r) => r.id === v)) return "Selected Role is invalid.";
         return "";
       case "experience": {
-        if (!v) return "Required.";
+        if (!v) return "Years of Experience is required.";
         const n = Number(v);
-        if (!Number.isFinite(n)) return "Must be a number.";
-        if (n < 0 || n > 60) return "Must be between 0 and 60.";
-        if (/\.\d{2,}/.test(v)) return "At most 1 decimal place.";
+        if (!Number.isFinite(n)) return "Years of Experience must be a number.";
+        if (n < 0 || n > 60) return "Years of Experience must be between 0 and 60.";
+        if (/\.\d{2,}/.test(v)) return "Years of Experience allows at most 1 decimal place.";
         return "";
       }
       case "linkedIn":
-        if (!v) return "Required.";
-        if (!LINKEDIN_RE.test(v)) return "Enter a valid LinkedIn profile URL (https://linkedin.com/in/…).";
+        if (!v) return "LinkedIn Profile URL is required.";
+        if (!LINKEDIN_RE.test(v)) return "Enter a valid LinkedIn Profile URL (https://linkedin.com/in/…).";
         return "";
       case "portfolioLink":
         if (!v) return "";
-        if (!URL_RE.test(v)) return "Enter a valid URL starting with http(s)://";
+        if (!URL_RE.test(v)) return "Portfolio URL must start with http(s)://";
         return "";
       case "message":
-        if (!v) return "Required.";
-        if (v.length < 50) return `Please write at least 50 characters (currently ${v.length}).`;
-        if (v.length > 2000) return "Keep it under 2000 characters.";
+        if (!v) return "Cover Letter is required.";
+        if (v.length < 50) return `Cover Letter must be at least 50 characters (currently ${v.length}).`;
+        if (v.length > 2000) return "Cover Letter must be under 2000 characters.";
         return "";
       case "referralOther":
         if (form.referral === "Other") {
-          if (!v) return "Please specify.";
-          if (v.length < 2) return "Too short.";
+          if (!v) return "Please specify how you heard about us.";
+          if (v.length < 2) return "Please provide more detail.";
         }
         return "";
       case "resume": {
-        if (!file) return "Please upload your resume.";
-        if (file.size === 0) return "File is empty.";
-        if (file.size > MAX_RESUME_BYTES) return "File must be 10 MB or smaller.";
+        if (!file) return "Resume is required.";
+        if (file.size === 0) return "Resume file is empty.";
+        if (file.size > MAX_RESUME_BYTES) return "Resume must be 10 MB or smaller.";
         const lower = file.name.toLowerCase();
-        if (!ALLOWED_RESUME_EXT.some((ext) => lower.endsWith(ext))) return "Must be a PDF, DOC, or DOCX.";
+        if (!ALLOWED_RESUME_EXT.some((ext) => lower.endsWith(ext))) return "Resume must be a PDF, DOC, or DOCX.";
         return "";
       }
       default:
@@ -333,7 +338,7 @@ export default function JobApplicationForm({
       </div>
 
       {/* Email + Phone */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4" style={{ position: "relative", zIndex: 50 }}>
         <div>
           <label htmlFor="email" className={labelClass}>
             Email Address <span className="text-red-500">*</span>
@@ -355,16 +360,44 @@ export default function JobApplicationForm({
           <label htmlFor="mobileNumber" className={labelClass}>
             Phone Number <span className="text-red-500">*</span>
           </label>
-          <input
-            id="mobileNumber"
-            name="mobileNumber"
-            type="tel"
-            required
+          <PhoneInput
+            country="us"
             value={form.mobileNumber}
-            onChange={handleChange}
-            onBlur={handleBlur}
-            placeholder="+1 (555) 000-0000"
-            className={cls("mobileNumber")}
+            onChange={(phone) => {
+              const val = phone ? "+" + phone : "";
+              setForm((prev) => ({ ...prev, mobileNumber: val }));
+              if (touched["mobileNumber"]) {
+                setErrors((prev) => ({ ...prev, mobileNumber: validateField("mobileNumber", val) }));
+              }
+            }}
+            onBlur={() => {
+              setTouched((prev) => ({ ...prev, mobileNumber: true }));
+              setErrors((prev) => ({ ...prev, mobileNumber: validateField("mobileNumber", form.mobileNumber) }));
+            }}
+            inputProps={{ id: "mobileNumber", name: "mobileNumber" }}
+            containerStyle={{ width: "100%", position: "relative" }}
+            inputStyle={{
+              width: "100%",
+              height: "auto",
+              paddingTop: "0.625rem",
+              paddingBottom: "0.625rem",
+              fontSize: "0.875rem",
+              borderRadius: "0.375rem",
+              border: touched["mobileNumber"] && errors["mobileNumber"] ? "1px solid #f87171" : "1px solid #e2e8f0",
+              backgroundColor: "white",
+              color: "#0f172a",
+            }}
+            buttonStyle={{
+              borderRadius: "0.375rem 0 0 0.375rem",
+              borderTop: touched["mobileNumber"] && errors["mobileNumber"] ? "1px solid #f87171" : "1px solid #e2e8f0",
+              borderBottom: touched["mobileNumber"] && errors["mobileNumber"] ? "1px solid #f87171" : "1px solid #e2e8f0",
+              borderLeft: touched["mobileNumber"] && errors["mobileNumber"] ? "1px solid #f87171" : "1px solid #e2e8f0",
+              borderRight: "none",
+              backgroundColor: "white",
+            }}
+            dropdownStyle={{ zIndex: 9999, position: "absolute", width: "280px", minWidth: "280px" }}
+            enableSearch
+            searchPlaceholder="Search country..."
           />
           <FieldError name="mobileNumber" />
         </div>

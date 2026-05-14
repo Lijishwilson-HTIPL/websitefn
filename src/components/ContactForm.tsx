@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect, useCallback } from "react";
 import {
@@ -12,6 +12,8 @@ import {
   ArrowLeft,
 } from "lucide-react";
 import { BACKEND_URL } from "../config";
+import PhoneInput from "react-phone-input-2";
+import "react-phone-input-2/lib/style.css";
 
 const orgTypes = [
   "Pharmaceutical",
@@ -76,9 +78,76 @@ const initialState: FormState = {
 
 type Slot = { time: string; booked: boolean };
 
+type FormErrors = Partial<Record<keyof FormState, string>>;
+
+
+function validate(form: FormState): FormErrors {
+  const errors: FormErrors = {};
+  const nameRe = /^[a-zA-Z\s'\-]+$/;
+  const phoneRe = /^[+\d][\d\s\-().]{6,19}$/;
+
+  if (!form.firstName.trim()) {
+    errors.firstName = "First name is required.";
+  } else if (form.firstName.trim().length < 2) {
+    errors.firstName = "First name must be at least 2 characters.";
+  } else if (!nameRe.test(form.firstName)) {
+    errors.firstName = "First name must contain letters only.";
+  }
+
+  if (!form.lastName.trim()) {
+    errors.lastName = "Last name is required.";
+  } else if (form.lastName.trim().length < 2) {
+    errors.lastName = "Last name must be at least 2 characters.";
+  } else if (!nameRe.test(form.lastName)) {
+    errors.lastName = "Last name must contain letters only.";
+  }
+
+  if (!form.email.trim()) {
+    errors.email = "Email address is required.";
+  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
+    errors.email = "Enter a valid email address.";
+  }
+
+  if (!form.mobileNumber.trim()) {
+    errors.mobileNumber = "Mobile number is required.";
+  } else if (!phoneRe.test(form.mobileNumber.trim())) {
+    errors.mobileNumber = "Enter a valid phone number (e.g. +1 555 000 0000).";
+  }
+
+  if (!form.organization.trim()) {
+    errors.organization = "Organization name is required.";
+  } else if (form.organization.trim().length < 2) {
+    errors.organization = "Please enter your full organization name.";
+  }
+
+  if (!form.role.trim()) {
+    errors.role = "Your role or title is required.";
+  } else if (form.role.trim().length < 2) {
+    errors.role = "Please enter your full role or title.";
+  }
+
+  if (!form.orgType) {
+    errors.orgType = "Please select your organization type.";
+  }
+
+  if (!form.interest) {
+    errors.interest = "Please select your primary interest.";
+  }
+
+  if (!form.message.trim()) {
+    errors.message = "Please describe your challenge or initiative.";
+  } else if (form.message.trim().length < 30) {
+    errors.message = "Please provide at least 30 characters so we can prepare a useful response.";
+  }
+
+  return errors;
+}
+
 export default function ContactForm() {
   const [step, setStep] = useState<1 | 2>(1);
   const [form, setForm] = useState<FormState>(initialState);
+  const [errors, setErrors] = useState<FormErrors>({});
+  const [touched, setTouched] = useState<Partial<Record<keyof FormState, boolean>>>({}); 
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitStage, setSubmitStage] = useState<string | null>(null);
@@ -174,11 +243,31 @@ export default function ContactForm() {
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
   ) => {
-    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+    const { name, value } = e.target;
+    setForm((prev) => ({ ...prev, [name]: value }));
+    setErrors((prev) => ({ ...prev, [name]: undefined }));
   };
 
+
+  const handleBlur = (e: React.FocusEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const { name } = e.target;
+    const key = name as keyof FormState;
+    setTouched((prev) => ({ ...prev, [key]: true }));
+    const fieldErrors = validate(form);
+    setErrors((prev) => ({ ...prev, [key]: fieldErrors[key] }));
+  };
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const allFields: (keyof FormState)[] = ["firstName","lastName","email","mobileNumber","organization","role","orgType","interest","message"];
+    setTouched(Object.fromEntries(allFields.map((k) => [k, true])));
+    const fieldErrors = validate(form);
+    if (Object.keys(fieldErrors).length > 0) {
+      setErrors(fieldErrors);
+      const firstKey = Object.keys(fieldErrors)[0];
+      document.getElementById(firstKey)?.focus();
+      return;
+    }
+    setErrors({});
     setSubmitting(true);
     setSubmitStage("Validating your details…");
 
@@ -211,7 +300,7 @@ export default function ContactForm() {
         if (data.booking?.joinLink) setJoinLink(data.booking.joinLink);
         setSubmitted(true);
       } else {
-        alert(data.message || "Something went wrong");
+        alert(data.message || data.error || "Something went wrong. Please try again.");
         console.error("Backend Error:", data);
         if (res.status === 409) {
           setStep(1);
@@ -261,9 +350,15 @@ export default function ContactForm() {
     );
   }
 
-  const inputClass =
-    "w-full rounded-md border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 focus:scale-[1.01] transition-all duration-200";
+  const inputClass = (field?: keyof FormState) =>
+    `w-full rounded-md border bg-white px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:scale-[1.01] transition-all duration-200 ${
+      field && errors[field]
+        ? "border-red-400 focus:border-red-500 focus:ring-red-500/20"
+        : "border-slate-200 focus:border-sky-500 focus:ring-sky-500/20"
+    }`;
   const labelClass = "block text-xs font-semibold text-slate-700 mb-1.5";
+  const FieldError = ({ field }: { field: keyof FormState }) =>
+    errors[field] ? <p className="mt-1 text-xs text-red-500">{errors[field]}</p> : null;
 
   // ── Step 1: Calendar + Time ─────────────────────────────────────────
   if (step === 1) {
@@ -429,7 +524,7 @@ export default function ContactForm() {
 
   // ── Step 2: Form ────────────────────────────────────────────────────
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden animate-slide-in-right">
+    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm animate-slide-in-right">
       {/* Stepper */}
       <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100 bg-slate-50/60">
         <div className="flex items-center gap-2">
@@ -479,12 +574,13 @@ export default function ContactForm() {
               id="firstName"
               name="firstName"
               type="text"
-              required
               value={form.firstName}
               onChange={handleChange}
+              onBlur={handleBlur}
               placeholder="Jane"
-              className={inputClass}
+              className={inputClass("firstName")}
             />
+            <FieldError field="firstName" />
           </div>
           <div>
             <label htmlFor="lastName" className={labelClass}>
@@ -494,17 +590,18 @@ export default function ContactForm() {
               id="lastName"
               name="lastName"
               type="text"
-              required
               value={form.lastName}
               onChange={handleChange}
+              onBlur={handleBlur}
               placeholder="Smith"
-              className={inputClass}
+              className={inputClass("lastName")}
             />
+            <FieldError field="lastName" />
           </div>
         </div>
 
         {/* Email + Phone */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4" style={{ position: "relative", zIndex: 50 }}>
           <div>
             <label htmlFor="email" className={labelClass}>
               Business Email Address <span className="text-red-500">*</span>
@@ -513,28 +610,58 @@ export default function ContactForm() {
               id="email"
               name="email"
               type="email"
-              required
               value={form.email}
               onChange={handleChange}
+              onBlur={handleBlur}
               placeholder="jane.smith@company.com"
-              className={inputClass}
+              className={inputClass("email")}
             />
-            <p className="mt-1 text-xs text-slate-400">Responses sent to business email only.</p>
+            {errors.email
+              ? <FieldError field="email" />
+              : null}
           </div>
           <div>
             <label htmlFor="mobileNumber" className={labelClass}>
               Mobile Number <span className="text-red-500">*</span>
             </label>
-            <input
-              id="mobileNumber"
-              name="mobileNumber"
-              type="tel"
-              required
+            <PhoneInput
+              country="us"
               value={form.mobileNumber}
-              onChange={handleChange}
-              placeholder="+1 (555) 000-0000"
-              className={inputClass}
+              onChange={(phone) => {
+                setForm((prev) => ({ ...prev, mobileNumber: phone ? "+" + phone : "" }));
+                setErrors((prev) => ({ ...prev, mobileNumber: undefined }));
+              }}
+              onBlur={() => {
+                setTouched((prev) => ({ ...prev, mobileNumber: true }));
+                const fe = validate({ ...form });
+                setErrors((prev) => ({ ...prev, mobileNumber: fe.mobileNumber }));
+              }}
+              inputProps={{ id: "mobileNumber", name: "mobileNumber" }}
+              containerStyle={{ width: "100%", position: "relative" }}
+              inputStyle={{
+                width: "100%",
+                height: "auto",
+                paddingTop: "0.625rem",
+                paddingBottom: "0.625rem",
+                fontSize: "0.875rem",
+                borderRadius: "0.375rem",
+                border: touched["mobileNumber"] && errors["mobileNumber"] ? "1px solid #f87171" : "1px solid #e2e8f0",
+                backgroundColor: "white",
+                color: "#0f172a",
+              }}
+              buttonStyle={{
+                borderRadius: "0.375rem 0 0 0.375rem",
+                borderTop: touched["mobileNumber"] && errors["mobileNumber"] ? "1px solid #f87171" : "1px solid #e2e8f0",
+                borderBottom: touched["mobileNumber"] && errors["mobileNumber"] ? "1px solid #f87171" : "1px solid #e2e8f0",
+                borderLeft: touched["mobileNumber"] && errors["mobileNumber"] ? "1px solid #f87171" : "1px solid #e2e8f0",
+                borderRight: "none",
+                backgroundColor: "white",
+              }}
+              dropdownStyle={{ zIndex: 9999, position: "absolute", width: "280px", minWidth: "280px" }}
+              enableSearch
+              searchPlaceholder="Search country..."
             />
+            <FieldError field="mobileNumber" />
           </div>
         </div>
 
@@ -548,12 +675,13 @@ export default function ContactForm() {
               id="organization"
               name="organization"
               type="text"
-              required
               value={form.organization}
               onChange={handleChange}
+              onBlur={handleBlur}
               placeholder="Your company"
-              className={inputClass}
+              className={inputClass("organization")}
             />
+            <FieldError field="organization" />
           </div>
           <div>
             <label htmlFor="role" className={labelClass}>
@@ -563,12 +691,13 @@ export default function ContactForm() {
               id="role"
               name="role"
               type="text"
-              required
               value={form.role}
               onChange={handleChange}
+              onBlur={handleBlur}
               placeholder="Head of IT, VP Quality, etc."
-              className={inputClass}
+              className={inputClass("role")}
             />
+            <FieldError field="role" />
           </div>
         </div>
 
@@ -581,16 +710,18 @@ export default function ContactForm() {
             <select
               id="orgType"
               name="orgType"
-              required
+
               value={form.orgType}
               onChange={handleChange}
-              className={inputClass}
+              onBlur={handleBlur}
+              className={inputClass("orgType")}
             >
               <option value="" disabled>Select type</option>
               {orgTypes.map((t) => (
                 <option key={t} value={t}>{t}</option>
               ))}
             </select>
+            <FieldError field="orgType" />
           </div>
           <div>
             <label htmlFor="interest" className={labelClass}>
@@ -599,16 +730,19 @@ export default function ContactForm() {
             <select
               id="interest"
               name="interest"
-              required
+
               value={form.interest}
               onChange={handleChange}
-              className={inputClass}
+              onBlur={handleBlur}
+              className={inputClass("interest")}
             >
-              <option value="" disabled>Select interest</option>
+              <option value="" disabled>Select Interest</option>
               {primaryInterests.map((i) => (
                 <option key={i} value={i}>{i}</option>
               ))}
+
             </select>
+            <FieldError field="interest" />
           </div>
         </div>
 
@@ -620,13 +754,18 @@ export default function ContactForm() {
           <textarea
             id="message"
             name="message"
-            required
+
             rows={5}
             value={form.message}
             onChange={handleChange}
+            onBlur={handleBlur}
             placeholder="3–5 sentences is enough to give us useful context. What are you working on, what environment are you in, and what kind of help are you looking for?"
-            className={`${inputClass} resize-none`}
+            className={`${inputClass("message")} resize-none`}
           />
+          <div className="flex items-center justify-between mt-1">
+            <FieldError field="message" />
+            <span className={`text-xs ml-auto ${form.message.trim().length < 30 && form.message.length > 0 ? "text-amber-500" : "text-slate-400"}`}>{form.message.trim().length} / 30 min</span>
+          </div>
         </div>
 
         {/* Contact preference */}
@@ -641,6 +780,7 @@ export default function ContactForm() {
                   value={option}
                   checked={form.contactPreference === option}
                   onChange={handleChange}
+                  onBlur={handleBlur}
                   className="accent-sky-600"
                 />
                 <span className="text-sm text-slate-700">{option}</span>
@@ -659,7 +799,8 @@ export default function ContactForm() {
             name="referral"
             value={form.referral}
             onChange={handleChange}
-            className={inputClass}
+            onBlur={handleBlur}
+            className={inputClass("referral")}
           >
             <option value="">Select source</option>
             {referralSources.map((s) => (
@@ -707,3 +848,9 @@ export default function ContactForm() {
     </div>
   );
 }
+
+
+
+
+
+

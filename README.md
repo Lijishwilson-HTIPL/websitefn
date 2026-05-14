@@ -139,17 +139,23 @@ All requests go to `NEXT_PUBLIC_BACKEND_URL`. The hook and services consume thes
 Set in `.env.local` (not committed to version control):
 
 ```env
-# Development
-NEXT_PUBLIC_BACKEND_URL=http://localhost:5010
+# development
+# NEXT_PUBLIC_BACKEND_URL=http://localhost:5010
 
-# Staging
+# frappe-staging
+NEXT_PUBLIC_BACKEND_URL=https://qa.htmft.com/frappe_backend_staging
+
+# vtiger-staging
 # NEXT_PUBLIC_BACKEND_URL=https://qa.htmft.com/vtiger_backend_staging
 
-# Production
+# frappe-prod
+# NEXT_PUBLIC_BACKEND_URL=https://qa.htmft.com/frappe_backend
+
+# vtiger-prod
 # NEXT_PUBLIC_BACKEND_URL=https://qa.htmft.com/vtiger_backend
 ```
 
-Uncomment the appropriate line for your target environment. Only one should be active at a time.
+Uncomment the line for your target deployment. Only one should be active at a time. The backend's `BASE_PATH` must match — e.g. `frappe_backend_staging` here corresponds to `BASE_PATH=/frappe_backend_staging` in the backend `.env`.
 
 ---
 
